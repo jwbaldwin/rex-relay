@@ -46,7 +46,7 @@ export default Plugin.define({
         pid: process.pid,
         hostID: identity.host_id,
         placement,
-        sessionIDs: [...sessionIDs],
+        sessionIDs,
       });
     };
     const dispose = createRoot((dispose) => {

@@ -1,5 +1,5 @@
 import { realpath } from "node:fs/promises";
-import { isAbsolute, relative, resolve } from "node:path";
+import { isAbsolute, relative, resolve, sep } from "node:path";
 import { z } from "zod";
 import type { Conversation, Options, Placement } from "./model.ts";
 import { runJSON } from "./process.ts";
@@ -69,9 +69,7 @@ export function contains(directory: string, candidate: string): boolean {
   const path = relative(directory, candidate);
   return (
     path === "" ||
-    (path !== ".." &&
-      !path.startsWith(`..${process.platform === "win32" ? "\\" : "/"}`) &&
-      !isAbsolute(path))
+    (path !== ".." && !path.startsWith(`..${sep}`) && !isAbsolute(path))
   );
 }
 

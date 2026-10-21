@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { resolveOpenCodeExecutable } from "../src/executable.ts";
 
 const directories: string[] = [];
@@ -43,6 +43,14 @@ test("keeps an explicitly configured executable instead of replacing it with the
       "/other/opencode",
       cli.directory,
     ),
+  ).toBe(cli.canonical);
+});
+
+test("resolves an explicitly configured relative path without searching PATH", async () => {
+  const cli = await executable("custom-opencode");
+  const configured = relative(process.cwd(), cli.path);
+  expect(
+    await resolveOpenCodeExecutable(configured, "/other/opencode", ""),
   ).toBe(cli.canonical);
 });
 

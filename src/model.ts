@@ -56,19 +56,17 @@ export type Conversation = {
   archived?: number;
 };
 
+const PhonePromptMetadata = z.object({
+  notification: z.object({ callbackURL: z.string() }),
+});
+
 export function isPhonePrompt(metadata: unknown): boolean {
-  const marker = z
-    .object({
-      notification: z.object({ callbackURL: z.string() }),
-    })
-    .safeParse(metadata);
+  const marker = PhonePromptMetadata.safeParse(metadata);
   if (!marker.success) return false;
   try {
     const url = new URL(marker.data.notification.callbackURL);
     return (
-      url.protocol === "https:" &&
-      url.hostname === "opencode-notify-relay.anomalyco.workers.dev" &&
-      url.port === "" &&
+      url.origin === "https://opencode-notify-relay.anomalyco.workers.dev" &&
       url.username === "" &&
       url.password === "" &&
       /^\/v1\/notify\/[^/]+$/.test(url.pathname)

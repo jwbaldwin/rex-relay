@@ -145,7 +145,7 @@ export class Bridge {
       return;
     let snapshot = await this.rex.snapshot();
     const failures: unknown[] = [];
-    for (const [id] of Object.entries(this.state.entries)) {
+    for (const id of Object.keys(this.state.entries)) {
       try {
         if (this.stopped) break;
         if (this.state.entries[id].status === "dismissed") continue;
@@ -163,6 +163,7 @@ export class Bridge {
           });
           continue;
         }
+        const title = conversation.title || "OpenCode";
         const existing = claims.find((claim) => claim.sessionIDs.includes(id));
         if (existing) {
           const same =
@@ -175,7 +176,6 @@ export class Bridge {
                 matches(terminal, existing.placement) &&
                 isRelayTerminal(terminal.label, id),
             );
-          const title = conversation.title || "OpenCode";
           if (owned && (entry.status !== "open" || entry.title !== title))
             await this.rex.rename(existing.placement, title);
           if (!same || entry.title !== title) {
@@ -202,7 +202,6 @@ export class Bridge {
             matches(claim.placement, entry.placement),
           );
           if (window && terminal && !switched) {
-            const title = conversation.title || "OpenCode";
             if (entry.owned && title !== entry.title) {
               await this.rex.rename(entry.placement, title);
               await this.set(id, { ...entry, title });
@@ -246,7 +245,7 @@ export class Bridge {
           status: "open",
           placement,
           owned: true,
-          title: conversation.title || "OpenCode",
+          title,
           requestedAt: entry.requestedAt,
         });
         if (!recovered) snapshot = await this.rex.snapshot();

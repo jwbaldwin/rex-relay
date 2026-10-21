@@ -144,6 +144,28 @@ function fixture() {
 }
 
 describe("phone prompt detection", () => {
+  test("accepts an explicit HTTPS default port", () => {
+    expect(
+      isPhonePrompt({
+        notification: {
+          callbackURL:
+            "https://opencode-notify-relay.anomalyco.workers.dev:443/v1/notify/test",
+        },
+      }),
+    ).toBe(true);
+  });
+
+  test("rejects password-only callback credentials", () => {
+    expect(
+      isPhonePrompt({
+        notification: {
+          callbackURL:
+            "https://:password@opencode-notify-relay.anomalyco.workers.dev/v1/notify/test",
+        },
+      }),
+    ).toBe(false);
+  });
+
   test("uses the callback marker, not session creation or ordinary laptop metadata", () => {
     expect(isPhonePrompt(undefined)).toBe(false);
     expect(isPhonePrompt({})).toBe(false);
@@ -168,6 +190,33 @@ describe("phone prompt detection", () => {
 });
 
 describe("conversation to Rex tab", () => {
+  test.each(["created", "adopted"])(
+    "empty titles use the fallback in %s tabs",
+    async (kind) => {
+      const f = fixture();
+      const bridge = await f.create();
+      const adopted = kind === "adopted";
+      f.conversations.get(id)!.title = "";
+      if (adopted) {
+        f.addTerminal();
+        f.observe(bridge);
+      }
+      await bridge.request(id);
+      f.advance();
+      await bridge.tick();
+      expect(f.saved().entries[id]).toMatchObject({
+        status: "open",
+        title: "OpenCode",
+        owned: !adopted,
+      });
+      f.conversations.get(id)!.title = "Changed title";
+      await bridge.tick();
+      f.conversations.get(id)!.title = "";
+      await bridge.tick();
+      expect(f.renamed).toEqual(adopted ? [] : ["Changed title", "OpenCode"]);
+    },
+  );
+
   test("recognizes tabs created before the rename without opening duplicates", async () => {
     const f = fixture();
     const bridge = await f.create();

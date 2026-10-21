@@ -10,16 +10,21 @@ export async function resolveOpenCodeExecutable(
   const nativeHost =
     configured === "opencode" &&
     /^opencode(?:\.exe)?$/.test(basename(hostExecutable));
-  const candidates = nativeHost
-    ? [hostExecutable]
-    : isAbsolute(configured) ||
-        configured.includes("/") ||
-        configured.includes("\\")
-      ? [resolve(configured)]
-      : searchPath
-          .split(delimiter)
-          .filter(Boolean)
-          .map((directory) => resolve(directory, configured));
+  let candidates: string[];
+  if (nativeHost) {
+    candidates = [hostExecutable];
+  } else if (
+    isAbsolute(configured) ||
+    configured.includes("/") ||
+    configured.includes("\\")
+  ) {
+    candidates = [resolve(configured)];
+  } else {
+    candidates = searchPath
+      .split(delimiter)
+      .filter(Boolean)
+      .map((directory) => resolve(directory, configured));
+  }
   for (const candidate of candidates) {
     try {
       await access(candidate, constants.X_OK);

@@ -1,7 +1,14 @@
 import { strict as assert } from "node:assert";
 import { execFile } from "node:child_process";
 import { once } from "node:events";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -27,13 +34,13 @@ const stateHome = join(temporary, "state");
 const project = join(temporary, "project");
 const bridgeState = join(temporary, "rex-relay-state");
 const wrapper = join(temporary, "opencode");
-const env: NodeJS.ProcessEnv = {
-  ...process.env,
+const xdgDirectories = {
   XDG_CONFIG_HOME: configHome,
   XDG_STATE_HOME: stateHome,
   XDG_DATA_HOME: join(temporary, "data"),
   XDG_CACHE_HOME: join(temporary, "cache"),
 };
+const env: NodeJS.ProcessEnv = { ...process.env, ...xdgDirectories };
 delete env.OPENCODE_CONFIG;
 delete env.OPENCODE_CONFIG_CONTENT;
 delete env.OPENCODE_CLI_CONFIG_CONTENT;
@@ -58,7 +65,6 @@ const rexCall = (method: string, input: object) =>
   );
 let rexSessionID: string | undefined;
 let serviceStarted = false;
-let adapter: Rex | undefined;
 let completed = false;
 
 async function eventually<T>(
@@ -73,20 +79,6 @@ async function eventually<T>(
     await Bun.sleep(200);
   }
   throw new Error(`Timed out: ${label}`);
-}
-
-async function live(): Promise<Snapshot> {
-  assert(adapter);
-  const snapshot = await adapter.snapshot();
-  return {
-    ...snapshot,
-    sessions: snapshot.sessions.filter(
-      (session) => session.session_id === rexSessionID,
-    ),
-    terminals: snapshot.terminals.filter(
-      (terminal) => terminal.sessionID === rexSessionID,
-    ),
-  };
 }
 
 try {
@@ -166,13 +158,8 @@ try {
     window_id: launchProbe.window_id,
   });
   const shellQuote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
-  const environment = [
-    "XDG_CONFIG_HOME",
-    "XDG_STATE_HOME",
-    "XDG_DATA_HOME",
-    "XDG_CACHE_HOME",
-  ]
-    .map((key) => `${key}=${shellQuote(env[key] ?? "")}`)
+  const environment = Object.entries(xdgDirectories)
+    .map(([key, directory]) => `${key}=${shellQuote(directory)}`)
     .join(" ");
   await writeFile(
     wrapper,
@@ -242,7 +229,19 @@ try {
     ),
   );
   const rpc = client.rpc(RexRelay);
-  adapter = new Rex(Options.parse(options));
+  const adapter = new Rex(Options.parse(options));
+  const live = async (): Promise<Snapshot> => {
+    const snapshot = await adapter.snapshot();
+    return {
+      ...snapshot,
+      sessions: snapshot.sessions.filter(
+        (session) => session.session_id === created.session_id,
+      ),
+      terminals: snapshot.terminals.filter(
+        (terminal) => terminal.sessionID === created.session_id,
+      ),
+    };
+  };
   const baseline = (await live()).sessions[0];
   const baselineView = z
     .object({ active_window_id: z.string() })
@@ -290,24 +289,21 @@ try {
       (w) => w.window_id === rexWindow && w.label === "Rex Relay renamed",
     ),
   );
-  const statePath = async () => {
-    const { readdir } = await import("node:fs/promises");
-    const files = await readdir(bridgeState);
-    const name = files.find((name) => name.endsWith(".json"));
-    assert(name);
-    return join(bridgeState, name);
-  };
   await eventually(
     "Rex TUI registers its real process",
     async () => (await rpc.status(null, { location })).observed,
     (ids) => ids.includes(conversation.id),
   );
   await rpc.reopen({ sessionID: conversation.id }, { location });
+  const stateFiles = await readdir(bridgeState);
+  const stateFilename = stateFiles.find((name) => name.endsWith(".json"));
+  assert(stateFilename);
+  const statePath = join(bridgeState, stateFilename);
+  const readState = async () =>
+    State.parse(JSON.parse(await readFile(statePath, "utf8")));
   await eventually(
     "existing tab is reused",
-    async () =>
-      State.parse(JSON.parse(await readFile(await statePath(), "utf8")))
-        .entries[conversation.id],
+    async () => (await readState()).entries[conversation.id],
     (entry) => entry?.status === "open",
   );
   assert.equal(
@@ -328,13 +324,9 @@ try {
     },
     await live(),
   );
-  const claimsSchema = z.object({ observed: z.array(z.string()) });
   await eventually(
     "manual TUI announces its conversation",
-    async () => {
-      const status = await rpc.status(null, { location });
-      return claimsSchema.parse(status).observed;
-    },
+    async () => (await rpc.status(null, { location })).observed,
     (ids) => ids.includes(manual.id),
   );
   const otherProject = join(temporary, "other-project");
@@ -368,12 +360,7 @@ try {
   });
   await eventually(
     "existing manual Rex tab is adopted",
-    async () => {
-      const state = State.parse(
-        JSON.parse(await readFile(await statePath(), "utf8")),
-      );
-      return state.entries[manual.id];
-    },
+    async () => (await readState()).entries[manual.id],
     (entry) => entry?.status === "open",
   );
   assert.equal(
@@ -387,12 +374,7 @@ try {
   });
   await eventually(
     "closed Rex tab is dismissed",
-    async () => {
-      const state = State.parse(
-        JSON.parse(await readFile(await statePath(), "utf8")),
-      );
-      return state.entries[manual.id];
-    },
+    async () => (await readState()).entries[manual.id],
     (entry) => entry?.status === "dismissed",
   );
   await rpc.reopen({ sessionID: manual.id }, { location });
