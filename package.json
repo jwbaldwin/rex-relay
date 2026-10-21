@@ -1,0 +1,47 @@
+{
+  "name": "opencode-rex-relay",
+  "version": "0.1.0",
+  "description": "Keep mobile OpenCode conversations ready in Rex tabs.",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jwbaldwin/rex-relay.git"
+  },
+  "homepage": "https://github.com/jwbaldwin/rex-relay#readme",
+  "bugs": {
+    "url": "https://github.com/jwbaldwin/rex-relay/issues"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./tui": "./src/tui.ts",
+    "./rpc": "./src/rpc.ts"
+  },
+  "files": [
+    "src",
+    "index.ts",
+    "tui.ts",
+    "rpc.ts",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "verify:integration": "bun scripts/verify-integration.ts"
+  },
+  "dependencies": {
+    "@opencode/client": "^2.1.2",
+    "zod": "^4.1.0"
+  },
+  "peerDependencies": {
+    "@opencode/plugin": ">=2.1.2 <3",
+    "solid-js": "^1.9.0"
+  },
+  "devDependencies": {
+    "@opencode/plugin": "2.1.2",
+    "@types/bun": "^1.3.0",
+    "solid-js": "^1.9.0",
+    "typescript": "^5.9.3"
+  }
+}
