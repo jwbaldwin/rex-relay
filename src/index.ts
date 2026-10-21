@@ -11,6 +11,7 @@ import { canonicalPath, Rex } from "./rex.ts";
 import { RexRelay } from "./rpc.ts";
 import { FileState } from "./state.ts";
 import { acquireRuntime, type ManagedRuntime } from "./runtime.ts";
+import { resolveOpenCodeExecutable } from "./executable.ts";
 
 function report(error: unknown): void {
   const failures = error instanceof AggregateError ? error.errors : [error];
@@ -50,7 +51,13 @@ async function start(options: Options): Promise<ManagedRuntime> {
   const projects: Record<string, string> = {};
   for (const [directory, target] of Object.entries(options.projects))
     projects[await canonicalPath(directory)] = target;
-  const rex = new Rex({ ...options, projects });
+  const rex = new Rex({
+    ...options,
+    projects,
+    opencodeExecutable: await resolveOpenCodeExecutable(
+      options.opencodeExecutable,
+    ),
+  });
   const bridge = new Bridge(
     new FileState(join(stateDirectory, `${namespace}.json`)),
     {

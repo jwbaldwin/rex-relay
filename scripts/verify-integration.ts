@@ -13,6 +13,7 @@ import { Rex, type Snapshot } from "../src/rex.ts";
 import { Options, State } from "../src/model.ts";
 import { RexRelay } from "../src/rpc.ts";
 import { runJSON } from "../src/process.ts";
+import { resolveOpenCodeExecutable } from "../src/executable.ts";
 
 const execute = promisify(execFile);
 const opencode = process.env.OPENCODE_EXECUTABLE ?? "opencode";
@@ -122,6 +123,48 @@ try {
   const executable = (
     await execute("/usr/bin/which", [opencode])
   ).stdout.trim();
+  const resolvedExecutable = await resolveOpenCodeExecutable(
+    "opencode",
+    executable,
+    "",
+  );
+  const launchProbe = z
+    .object({ window_id: z.string(), block_ids: z.array(z.string()).length(1) })
+    .parse(
+      await rexCall("session.new_window", {
+        session_id: rexSessionID,
+        window_label: "Default executable probe",
+        focus: false,
+        layout: {
+          block: {
+            flavor: "com.superlogical.terminal.shell",
+            options: {
+              shell: "none",
+              command: [resolvedExecutable, "--version"],
+              exit: { on_completion: false },
+            },
+          },
+        },
+      }),
+    );
+  await eventually(
+    "resolved default executable runs inside Rex",
+    async () =>
+      z
+        .object({ last_exit: z.object({ exit_code: z.number() }).nullish() })
+        .parse(
+          await rexCall("com.superlogical.terminal.process", {
+            session_id: rexSessionID,
+            block_id: launchProbe.block_ids[0],
+            args: {},
+          }),
+        ),
+    (result) => result.last_exit?.exit_code === 0,
+  );
+  await rexCall("session.close_window", {
+    session_id: rexSessionID,
+    window_id: launchProbe.window_id,
+  });
   const shellQuote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
   const environment = [
     "XDG_CONFIG_HOME",
