@@ -124,7 +124,7 @@ export class Bridge {
   }
 
   release(clientID: string): void {
-    this.observations.delete(clientID);
+    if (this.observations.delete(clientID)) this.sequence++;
   }
 
   status() {
@@ -145,28 +145,40 @@ export class Bridge {
     };
   }
 
-  private liveClaims(snapshot: Snapshot): Observation[] {
+  private liveClaims(snapshot: Snapshot, terminals: Map<string, Terminal>) {
     const valid = new Map<string, { claim: Observation; sequence: number }>();
+    let expiresAt = Infinity;
+    const now = this.now();
     for (const [id, record] of this.observations) {
-      if (this.now() - record.seen > 30000) {
+      if (now - record.seen > 30000) {
         this.observations.delete(id);
         continue;
       }
+      expiresAt = Math.min(expiresAt, record.seen + 30000);
       const claim = record.claim;
       if (
         claim.hostID !== snapshot.identity.host_id ||
         claim.placement.instanceID !== snapshot.identity.instance_id
       )
         continue;
-      const terminal = snapshot.terminals.find((terminal) =>
-        matches(terminal, claim.placement),
-      );
-      if (!terminal?.processes.some((proc) => proc.pid === claim.pid)) continue;
+      const terminal = terminals.get(claim.placement.blockID);
+      if (
+        !terminal ||
+        !matches(terminal, claim.placement) ||
+        !terminal.processes.some((proc) => proc.pid === claim.pid)
+      )
+        continue;
       const previous = valid.get(claim.placement.blockID);
       if (!previous || previous.sequence < record.sequence)
         valid.set(claim.placement.blockID, record);
     }
-    return [...valid.values()].map((record) => record.claim);
+    const byConversation = new Map<string, Observation>();
+    for (const { claim } of valid.values()) {
+      for (const id of claim.sessionIDs) {
+        if (!byConversation.has(id)) byConversation.set(id, claim);
+      }
+    }
+    return { byBlock: valid, byConversation, expiresAt, sequence: this.sequence };
   }
 
   tick(): Promise<void> {
@@ -187,6 +199,10 @@ export class Bridge {
     )
       return;
     let snapshot = await this.rex.snapshot();
+    let terminals = new Map(
+      snapshot.terminals.map((terminal) => [terminal.blockID, terminal]),
+    );
+    let claims = this.liveClaims(snapshot, terminals);
     const failures: unknown[] = [];
     for (const id of Object.keys(this.state.entries)) {
       try {
@@ -194,7 +210,8 @@ export class Bridge {
         if (this.state.entries[id].status === "dismissed") continue;
         const conversation = await this.findConversation(id);
         const entry = this.state.entries[id];
-        const claims = this.liveClaims(snapshot);
+        if (claims.sequence !== this.sequence || this.now() > claims.expiresAt)
+          claims = this.liveClaims(snapshot, terminals);
         if (
           !conversation ||
           conversation.parentID ||
@@ -207,18 +224,14 @@ export class Bridge {
           continue;
         }
         const title = conversation.title || "OpenCode";
-        const existing = claims.find((claim) => claim.sessionIDs.includes(id));
+        const existing = claims.byConversation.get(id);
         if (existing) {
           const same =
             entry.status === "open" &&
             matches(existing.placement, entry.placement);
           const owned =
             (same && entry.owned) ||
-            snapshot.terminals.some(
-              (terminal) =>
-                matches(terminal, existing.placement) &&
-                isRelayTerminal(terminal.label, id),
-            );
+            isRelayTerminal(terminals.get(existing.placement.blockID)?.label, id);
           if (owned && (entry.status !== "open" || entry.title !== title))
             await this.rex.rename(existing.placement, title);
           if (!same || entry.title !== title) {
@@ -238,13 +251,15 @@ export class Bridge {
             ?.windows.find(
               (window) => window.window_id === entry.placement.windowID,
             );
-          const terminal = snapshot.terminals.find((terminal) =>
-            matches(terminal, entry.placement),
-          );
-          const switched = claims.some((claim) =>
-            matches(claim.placement, entry.placement),
-          );
-          if (window && terminal && !switched) {
+          const terminal = terminals.get(entry.placement.blockID);
+          const claim = claims.byBlock.get(entry.placement.blockID)?.claim;
+          const switched = claim && matches(claim.placement, entry.placement);
+          if (
+            window &&
+            terminal &&
+            matches(terminal, entry.placement) &&
+            !switched
+          ) {
             if (entry.owned && title !== entry.title) {
               await this.rex.rename(entry.placement, title);
               await this.set(id, { ...entry, title });
@@ -274,7 +289,7 @@ export class Bridge {
         const recovered = snapshot.terminals.find(
           (terminal) =>
             isRelayTerminal(terminal.label, id) &&
-            !claims.some((claim) => matches(claim.placement, terminal)),
+            !claims.byBlock.has(terminal.blockID),
         );
         const placement = recovered
           ? {
@@ -291,7 +306,13 @@ export class Bridge {
           title,
           requestedAt: entry.requestedAt,
         });
-        if (!recovered) snapshot = await this.rex.snapshot();
+        if (!recovered) {
+          snapshot = await this.rex.snapshot();
+          terminals = new Map(
+            snapshot.terminals.map((terminal) => [terminal.blockID, terminal]),
+          );
+          claims = this.liveClaims(snapshot, terminals);
+        }
       } catch (error) {
         if (this.dirty) throw error;
         failures.push(error);
