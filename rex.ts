@@ -1,8 +1,79 @@
-import { realpath } from "node:fs/promises";
-import { isAbsolute, relative, resolve, sep } from "node:path";
+import { execFile } from "node:child_process";
+import { constants } from "node:fs";
+import { access, realpath, stat } from "node:fs/promises";
+import {
+  basename,
+  delimiter,
+  isAbsolute,
+  relative,
+  resolve,
+  sep,
+} from "node:path";
+import { promisify } from "node:util";
 import { z } from "zod";
-import type { Conversation, Options, Placement } from "./model.ts";
-import { runJSON } from "./process.ts";
+import type { Conversation, Observation, Options, Placement } from "./rpc.ts";
+
+const execute = promisify(execFile);
+
+export async function runRexCommand<T>(
+  executable: string,
+  args: string[],
+  schema: z.ZodType<T>,
+  env?: NodeJS.ProcessEnv,
+): Promise<T> {
+  const environment = { ...(env ?? process.env) };
+  if (!env) {
+    for (const name of ["REX_SERVER", "REX_SESSION", "REX_BLOCK", "REX_CLIENT"])
+      delete environment[name];
+  }
+  const { stdout } = await execute(executable, args, {
+    env: environment,
+    timeout: 10000,
+    maxBuffer: 8 * 1024 * 1024,
+  });
+  return schema.parse(JSON.parse(stdout));
+}
+
+export async function resolveOpenCodeExecutable(
+  configured: string,
+  hostExecutable = process.execPath,
+  searchPath = process.env.PATH ?? "",
+): Promise<string> {
+  const nativeHost =
+    configured === "opencode" &&
+    /^opencode(?:\.exe)?$/.test(basename(hostExecutable));
+  let candidates: string[];
+  if (nativeHost) candidates = [hostExecutable];
+  else if (
+    isAbsolute(configured) ||
+    configured.includes("/") ||
+    configured.includes("\\")
+  )
+    candidates = [resolve(configured)];
+  else
+    candidates = searchPath
+      .split(delimiter)
+      .filter(Boolean)
+      .map((directory) => resolve(directory, configured));
+  for (const candidate of candidates) {
+    try {
+      await access(candidate, constants.X_OK);
+      if (!(await stat(candidate)).isFile()) continue;
+      return await realpath(candidate);
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        "code" in error &&
+        ["ENOENT", "ENOTDIR", "EACCES"].includes(String(error.code))
+      )
+        continue;
+      throw error;
+    }
+  }
+  throw new Error(
+    `Rex Relay cannot find the OpenCode executable "${configured}"; set opencodeExecutable to its absolute path`,
+  );
+}
 
 const Process = z.object({
   pid: z.number(),
@@ -126,7 +197,7 @@ export class Rex implements RexPort {
     input: object,
     schema: z.ZodType<T>,
   ): Promise<T> {
-    return runJSON(
+    return runRexCommand(
       this.options.rexExecutable,
       [
         ...(this.endpoint ? ["--server", this.endpoint] : []),
@@ -141,7 +212,7 @@ export class Rex implements RexPort {
   }
 
   async snapshot(): Promise<Snapshot> {
-    const identity = await runJSON(
+    const identity = await runRexCommand(
       this.options.rexExecutable,
       [
         ...(this.endpoint ? ["--server", this.endpoint] : []),
@@ -294,15 +365,22 @@ export class Rex implements RexPort {
 
 export async function terminalIdentity(
   executable: string,
-): Promise<RexIdentity | undefined> {
+): Promise<Pick<Observation, "hostID" | "placement"> | undefined> {
   if (!process.env.REX_BLOCK) return;
-  const identity = await runJSON(
+  const identity = await runRexCommand(
     executable,
     ["--autostart=false", "whoami", "--json"],
     Identity,
     process.env,
   );
-  return identity.session_id && identity.window_id && identity.block_id
-    ? identity
-    : undefined;
+  if (!identity.session_id || !identity.window_id || !identity.block_id) return;
+  return {
+    hostID: identity.host_id,
+    placement: {
+      sessionID: identity.session_id,
+      windowID: identity.window_id,
+      blockID: identity.block_id,
+      instanceID: identity.instance_id,
+    },
+  };
 }

@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
-import { Bridge } from "../src/bridge.ts";
-import { acquireRuntime } from "../src/runtime.ts";
+import { Bridge } from "../relay.ts";
+import { acquireRuntime } from "../index.ts";
 
 function fixture() {
   const bridge = new Bridge(
@@ -10,11 +10,7 @@ function fixture() {
       },
       async save() {},
     },
-    {
-      async conversation() {
-        return undefined;
-      },
-    },
+    async () => undefined,
     {
       async snapshot() {
         throw new Error("unused");

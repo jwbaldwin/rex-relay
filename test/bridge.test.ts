@@ -1,17 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
-import { Bridge } from "../src/bridge.ts";
-import {
-  isPhonePrompt,
-  type Conversation,
-  type Placement,
-  type State,
-} from "../src/model.ts";
-import {
-  selectProjectSession,
-  type RexPort,
-  type Snapshot,
-} from "../src/rex.ts";
+import { isPhonePrompt } from "../index.ts";
+import { Bridge, type State } from "../relay.ts";
+import { type Conversation, type Placement } from "../rpc.ts";
+import { selectProjectSession, type RexPort, type Snapshot } from "../rex.ts";
 
 const id = "ses_conversation";
 const placement: Placement = {
@@ -93,11 +85,9 @@ function fixture() {
   const create = async () => {
     const bridge = new Bridge(
       store,
-      {
-        async conversation(id) {
-          if (failedConversations.has(id)) throw new Error("missing checkout");
-          return conversations.get(id);
-        },
+      async (id) => {
+        if (failedConversations.has(id)) throw new Error("missing checkout");
+        return conversations.get(id);
       },
       rex,
       () => now,

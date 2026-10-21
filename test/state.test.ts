@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { FileState } from "../src/state.ts";
+import { FileState } from "../relay.ts";
 
 const directories: string[] = [];
 afterEach(async () => {

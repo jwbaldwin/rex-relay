@@ -1,21 +1,64 @@
-import type {
-  Conversation,
-  Entry,
-  Observation,
-  Placement,
-  State,
-} from "./model.ts";
+import { randomUUID } from "node:crypto";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { dirname } from "node:path";
+import { z } from "zod";
+import { Placement, type Conversation, type Observation } from "./rpc.ts";
 import {
   isRelayTerminal,
   type RexPort,
   type Snapshot,
   type Terminal,
 } from "./rex.ts";
-import type { StateStore } from "./state.ts";
 
-export type OpenCodePort = {
-  conversation(id: string): Promise<Conversation | undefined>;
-};
+const requested = { requestedAt: z.number() };
+const Entry = z.discriminatedUnion("status", [
+  z.object({ ...requested, status: z.literal("pending") }),
+  z.object({
+    ...requested,
+    status: z.literal("open"),
+    placement: Placement,
+    owned: z.boolean(),
+    title: z.string(),
+  }),
+  z.object({ ...requested, status: z.literal("dismissed") }),
+]);
+type Entry = z.infer<typeof Entry>;
+export const State = z.object({
+  version: z.literal(1),
+  entries: z.record(z.string().startsWith("ses_"), Entry),
+});
+export type State = z.infer<typeof State>;
+
+interface StateStore {
+  load(): Promise<State>;
+  save(state: State): Promise<void>;
+}
+
+export class FileState implements StateStore {
+  constructor(readonly path: string) {}
+
+  async load(): Promise<State> {
+    try {
+      return State.parse(JSON.parse(await readFile(this.path, "utf8")));
+    } catch (error) {
+      if (error instanceof Error && "code" in error && error.code === "ENOENT")
+        return { version: 1, entries: {} };
+      throw new Error(
+        "Rex Relay could not read its state; refusing to overwrite it",
+        { cause: error },
+      );
+    }
+  }
+
+  async save(state: State): Promise<void> {
+    await mkdir(dirname(this.path), { recursive: true, mode: 0o700 });
+    const temporary = `${this.path}.${randomUUID()}.tmp`;
+    await writeFile(temporary, JSON.stringify(state), { mode: 0o600 });
+    await rename(temporary, this.path);
+  }
+}
+
+type FindConversation = (id: string) => Promise<Conversation | undefined>;
 
 export class Bridge {
   private state: State = { version: 1, entries: {} };
@@ -32,7 +75,7 @@ export class Bridge {
 
   constructor(
     private readonly store: StateStore,
-    private readonly opencode: OpenCodePort,
+    private readonly findConversation: FindConversation,
     private readonly rex: RexPort,
     private readonly now = Date.now,
   ) {
@@ -149,7 +192,7 @@ export class Bridge {
       try {
         if (this.stopped) break;
         if (this.state.entries[id].status === "dismissed") continue;
-        const conversation = await this.opencode.conversation(id);
+        const conversation = await this.findConversation(id);
         const entry = this.state.entries[id];
         const claims = this.liveClaims(snapshot);
         if (

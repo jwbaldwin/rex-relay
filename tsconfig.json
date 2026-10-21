@@ -9,5 +9,5 @@
     "allowImportingTsExtensions": true,
     "types": ["bun"]
   },
-  "include": ["*.ts", "src", "test", "scripts"]
+  "include": ["*.ts", "test", "scripts"]
 }

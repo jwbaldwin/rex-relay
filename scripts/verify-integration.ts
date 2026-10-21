@@ -16,11 +16,14 @@ import { promisify } from "node:util";
 import { OpenCode } from "@opencode/client";
 import { Service } from "@opencode/client/service";
 import { z } from "zod";
-import { Rex, type Snapshot } from "../src/rex.ts";
-import { Options, State } from "../src/model.ts";
-import { RexRelay } from "../src/rpc.ts";
-import { runJSON } from "../src/process.ts";
-import { resolveOpenCodeExecutable } from "../src/executable.ts";
+import {
+  Rex,
+  runRexCommand,
+  resolveOpenCodeExecutable,
+  type Snapshot,
+} from "../rex.ts";
+import { Options, RexRelay } from "../rpc.ts";
+import { State } from "../relay.ts";
 
 const execute = promisify(execFile);
 const opencode = process.env.OPENCODE_EXECUTABLE ?? "opencode";
@@ -44,13 +47,13 @@ const env: NodeJS.ProcessEnv = { ...process.env, ...xdgDirectories };
 delete env.OPENCODE_CONFIG;
 delete env.OPENCODE_CONFIG_CONTENT;
 delete env.OPENCODE_CLI_CONFIG_CONTENT;
-const rexIdentity = await runJSON(
+const rexIdentity = await runRexCommand(
   rex,
   ["--autostart=false", "whoami", "--json"],
   z.object({ endpoint: z.string() }),
 );
 const rexCall = (method: string, input: object) =>
-  runJSON(
+  runRexCommand(
     rex,
     [
       "--server",

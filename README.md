@@ -31,7 +31,7 @@ Make sure the plugin has loaded in your existing Rex/OpenCode tabs so it can rec
 
 Phone detection uses the iOS app's `metadata.notification.callbackURL` marker. If the app doesn't send it, Rex Relay can't detect that phone prompt. No iOS app changes are needed.
 
-For fixed project mappings or other settings, see [options and defaults](src/model.ts).
+For fixed project mappings or other settings, see [options and defaults](rpc.ts).
 
 ## Development
 

@@ -13,13 +13,14 @@
     "url": "https://github.com/jwbaldwin/rex-relay/issues"
   },
   "exports": {
-    ".": "./src/index.ts",
-    "./tui": "./src/tui.ts",
-    "./rpc": "./src/rpc.ts"
+    ".": "./index.ts",
+    "./tui": "./tui.ts",
+    "./rpc": "./rpc.ts"
   },
   "files": [
-    "src",
     "index.ts",
+    "relay.ts",
+    "rex.ts",
     "tui.ts",
     "rpc.ts",
     "README.md",

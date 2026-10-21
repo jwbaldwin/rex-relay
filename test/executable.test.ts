@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
-import { resolveOpenCodeExecutable } from "../src/executable.ts";
+import { resolveOpenCodeExecutable } from "../rex.ts";
 
 const directories: string[] = [];
 afterEach(async () => {

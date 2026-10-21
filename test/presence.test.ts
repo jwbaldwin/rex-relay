@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
-import type { Observation } from "../src/model.ts";
-import { TerminalPresence } from "../src/presence.ts";
+import type { Observation } from "../rpc.ts";
+import { TerminalPresence } from "../tui.ts";
 
 const claim: Observation = {
   clientID: randomUUID(),
