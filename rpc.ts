@@ -5,7 +5,7 @@ export const Options = z.object({
   rexExecutable: z.string().min(1).default("rex"),
   rexServer: z.string().min(1).optional(),
   opencodeExecutable: z.string().min(1).default("opencode"),
-  fallbackSession: z.string().min(1).default("OpenCode"),
+  fallbackSession: z.string().min(1).default("meta"),
   projects: z.record(z.string(), z.string().min(1)).default({}),
   stateDirectory: z.string().min(1).optional(),
   intervalMs: z.number().int().min(1000).default(15000),

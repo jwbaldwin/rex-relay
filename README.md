@@ -24,7 +24,7 @@ Make sure the plugin has loaded in your existing Rex/OpenCode tabs so it can rec
 
 ## How it behaves
 
-- Opens tabs in the matching project's Rex session, or an **OpenCode** session if there's no clear match
+- Opens tabs in the matching project's Rex session, or **meta** if there's no clear match; creates **meta** if needed
 - Updates titles on tabs it creates, without stealing focus
 - Leaves deliberately closed tabs closed. Use `/rex-relay` to reopen one
 - Remembers mappings across restarts. Ctrl+O stays unchanged
